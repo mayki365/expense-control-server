@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:17    # Use the version you need
+    container_name: postgres_container
+    restart: always
+    environment:
+      POSTGRES_USER: sa    # Set your username
+      POSTGRES_PASSWORD: sa4admin # Set your password
+      POSTGRES_DB: postgres       # Set your database name
+    ports:
+      - "5432:5432"    # Expose PostgreSQL on localhost
+    volumes:
+      - postgres_data:/var/lib/postgresql/data # Persist data
+      - ./src/main/resources/init.sql:/docker-entrypoint-initdb.d/init.sql:ro # First-run script
+
+
+volumes:
+  postgres_data:
