@@ -1,7 +1,7 @@
-package org.acme;
+package se.zgodi;
 
 import io.quarkus.test.junit.QuarkusIntegrationTest;
 
 @QuarkusIntegrationTest
-class InvoicesResourceIT extends InvoicesResourceTest {
+class TransactionResourceIT extends TransactionResourceTest {
 }

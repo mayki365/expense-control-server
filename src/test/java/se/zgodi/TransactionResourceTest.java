@@ -1,4 +1,4 @@
-package org.acme;
+package se.zgodi;
 
 import io.quarkus.test.junit.QuarkusTest;
 
@@ -12,12 +12,12 @@ import static io.restassured.RestAssured.given;
 import static org.hamcrest.CoreMatchers.is;
 
 @QuarkusTest
-class InvoicesResourceTest {
+class TransactionResourceTest {
     @Test
     void testHelloEndpoint() {
         var body = given()
                 .contentType("application/json")
-                .when().get("/invoices")
+                .when().get("/transaction")
                 .then()
                 .statusCode(200)
                 .extract().as(ArrayList.class);
