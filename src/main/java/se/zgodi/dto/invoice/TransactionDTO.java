@@ -10,7 +10,7 @@ import java.util.List;
 
 
 @Entity
-@Table(name="transaction")
+@Table(name="account_transaction")
 @Cacheable
 public class TransactionDTO extends PanacheEntity {
 
@@ -30,6 +30,10 @@ public class TransactionDTO extends PanacheEntity {
     @OneToMany(mappedBy = "transaction", cascade = CascadeType.ALL, orphanRemoval = true)
     @Fetch(FetchMode.JOIN)
     public List<TransactionTagDTO> tags;
+
+    @ManyToOne
+    @JoinColumn(name = "account_id")
+    public AccountDTO account;
 
     @Column(precision = 10, scale = 2)
     public BigDecimal amount;

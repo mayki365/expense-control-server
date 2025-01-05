@@ -25,7 +25,17 @@ public class TransactionResource {
     private static final Logger LOG = Logger.getLogger(TransactionResource.class);
 
     @GET
-    public Uni<RestResponse<List<TransactionResponse>>> get() {
+    public Uni<RestResponse<List<TransactionResponse>>> getAll() {
+        return TransactionDTO
+                .listAll(Sort.by("id", Sort.Direction.Descending))
+                .map(items -> RestResponse.ok(
+                        items.stream().map(entity -> new TransactionResponse((TransactionDTO) entity)).toList())
+                );
+    }
+
+    @GET
+    @Path("account/{accountId}")
+    public Uni<RestResponse<List<TransactionResponse>>> getForAccount(Long accountId) {
         return TransactionDTO
                 .listAll(Sort.by("id", Sort.Direction.Descending))
                 .map(items -> RestResponse.ok(
@@ -41,15 +51,6 @@ public class TransactionResource {
         );
     }
 
-    @POST
-    @Consumes(MediaType.APPLICATION_JSON)
-    public Uni<RestResponse<TransactionResponse>> create(TransactionRequest transactionRequest) {
-        TransactionDTO transaction = new TransactionDTO(transactionRequest);
-        transaction.tags = transactionRequest.tags.stream().map(tagName -> new TransactionTagDTO(transaction, tagName)).toList();
 
-        return Panache.withTransaction(transaction::persist).onItem()
-                .transform(entityBase -> new TransactionResponse((TransactionDTO) entityBase))
-                .map(persistedItem -> RestResponse.status(RestResponse.Status.CREATED, persistedItem));
-    }
 
 }

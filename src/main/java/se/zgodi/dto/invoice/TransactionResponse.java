@@ -6,6 +6,7 @@ import java.util.List;
 
 public class TransactionResponse {
     public Long id;
+    public Long accountId;
     public String name;
     public String description;
     public List<String> tags;
@@ -13,6 +14,7 @@ public class TransactionResponse {
 
     public TransactionResponse(TransactionDTO invoice) {
         this.id = invoice.id;
+        this.accountId = invoice.account != null ? invoice.account.id : null;
         this.name = invoice.name;
         this.description = invoice.description;
         this.amount = invoice.amount;

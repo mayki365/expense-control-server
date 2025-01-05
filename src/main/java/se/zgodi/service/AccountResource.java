@@ -8,9 +8,7 @@ import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import org.jboss.logging.Logger;
 import org.jboss.resteasy.reactive.RestResponse;
-import se.zgodi.dto.invoice.AccountDTO;
-import se.zgodi.dto.invoice.AccountRequest;
-import se.zgodi.dto.invoice.AccountResponse;
+import se.zgodi.dto.invoice.*;
 
 import java.util.List;
 
@@ -55,5 +53,22 @@ public class AccountResource {
                 .map(deleted -> deleted
                         ? RestResponse.ok()
                         : RestResponse.notFound());
+    }
+
+    @POST
+    @Path("/{id}/transaction")
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Uni<RestResponse<TransactionResponse>> addTransaction(@PathParam("id") Long id, TransactionRequest transactionRequest) {
+
+        return AccountDTO.findById(id)
+                .onItem().ifNotNull().transformToUni(account -> {
+                    TransactionDTO transaction = new TransactionDTO(transactionRequest);
+                    transaction.tags = transactionRequest.tags.stream().map(tagName -> new TransactionTagDTO(transaction, tagName)).toList();
+                    transaction.account = (AccountDTO) account;
+                    return Panache.withTransaction(transaction::persist).onItem()
+                            .transform(entityBase -> new TransactionResponse((TransactionDTO) entityBase))
+                            .map(persistedItem -> RestResponse.status(RestResponse.Status.CREATED, persistedItem));
+                })
+                .onItem().ifNull().continueWith(RestResponse.notFound());
     }
 }
