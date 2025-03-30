@@ -33,6 +33,8 @@ public class AccountDTO extends PanacheEntity {
     @Fetch(FetchMode.JOIN)
     public List<TransactionDTO> tranactions;
 
+
+
     public AccountDTO() { }
     public AccountDTO(AccountRequest accountRequest) {
         this.name = accountRequest.name;

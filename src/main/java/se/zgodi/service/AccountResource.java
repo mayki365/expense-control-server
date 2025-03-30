@@ -4,13 +4,15 @@ import io.quarkus.hibernate.reactive.panache.Panache;
 import io.quarkus.panache.common.Sort;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
-
+import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
 import org.jboss.resteasy.reactive.RestResponse;
 import se.zgodi.dto.invoice.*;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Path("/account")
@@ -66,27 +68,46 @@ public class AccountResource {
     public Uni<RestResponse<Void>> deleteTransaction(
             @PathParam("accountId") Long accountId,
             @PathParam("transactionId") Long transactionId) {
-        return Panache.withTransaction(() -> TransactionDTO.findById(transactionId)
-                .onItem().ifNotNull().transformToUni(transaction -> {
+        LOG.infof("Deleting transaction with ID: %d for account ID: %d", transactionId, accountId);
+        
+        return Panache.withTransaction(() -> 
+            TransactionDTO.<TransactionDTO>findById(transactionId)
+                .onItem().ifNull().failWith(() -> 
+                    new WebApplicationException("Transaction not found", Response.Status.NOT_FOUND))
+                .<RestResponse<Void>>flatMap(transaction -> {
                     TransactionDTO txn = (TransactionDTO) transaction;
-                    if (!txn.account.id.equals(accountId)) {
-                        return Uni.createFrom().failure(new WebApplicationException("Account ID mismatch", 400));
+                    // Verify the transaction belongs to the specified account
+                    if (txn.account == null || !txn.account.id.equals(accountId)) {
+                        String message = String.format("Transaction %d does not belong to account %d", 
+                            transactionId, accountId);
+                        throw new WebApplicationException(message, Response.Status.BAD_REQUEST);
                     }
+                    
+                    // Store the transaction amount and account for update
+                    BigDecimal transactionAmount = txn.amount;
                     AccountDTO account = txn.account;
-                    account.balance = account.balance.subtract(txn.amount);
-
-                    // Persist the updated account before deleting the transaction
+                    
+                    // Update account balance
+                    account.balance = account.balance.subtract(transactionAmount);
+                    
+                    // First persist the updated account balance
                     return account.persist()
-                            .onItem().transformToUni(ignored -> txn.delete())
-                            .onItem().ifNotNull().transform(
-                                    persistedItem -> RestResponse.status(RestResponse.Status.ACCEPTED, persistedItem));
+                        .flatMap(updatedAccount -> {
+                            // Delete tags and items first
+                            return TransactionDTO.delete("DELETE FROM TransactionTagDTO t WHERE t.transaction.id = ?1", txn.id)
+                                .chain(() -> TransactionDTO.delete("DELETE FROM TransactionItemDTO t WHERE t.transaction.id = ?1", txn.id))
+                                .chain(() -> TransactionDTO.delete("DELETE FROM TransactionDTO t WHERE t.id = ?1", txn.id))
+                                .map(deleted -> RestResponse.noContent());
+                        });
                 })
-                .onItem().ifNull().failWith(new WebApplicationException("Transaction not found", 404)))
-                .onFailure().recoverWithItem(throwable -> {
-                    // Handling internal server error
-                    throwable.printStackTrace();
-                    return RestResponse.status(RestResponse.Status.BAD_REQUEST);
-                });
+        ).onFailure().recoverWithItem(failure -> {
+            LOG.error("Error deleting transaction", failure);
+            if (failure instanceof WebApplicationException) {
+                WebApplicationException wae = (WebApplicationException) failure;
+                return RestResponse.status(wae.getResponse().getStatus());
+            }
+            return RestResponse.serverError();
+        });
     }
 
     @POST
