@@ -7,7 +7,6 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 
-import org.hibernate.query.SortDirection;
 import org.jboss.logging.Logger;
 import org.jboss.resteasy.reactive.RestResponse;
 import se.zgodi.dto.invoice.*;
@@ -103,9 +102,19 @@ public class AccountResource {
                             .map(tagName -> new TransactionTagDTO(transaction, tagName)).toList();
                     transaction.account = (AccountDTO) account;
                     ((AccountDTO) account).balance = ((AccountDTO) account).balance.add(transaction.amount);
+                    
+                    if (transactionRequest.items != null && !transactionRequest.items.isEmpty()) {
+                        transaction.items = transactionRequest.items.stream()
+                                .map(itemRequest -> {
+                                    TransactionItemDTO item = new TransactionItemDTO(itemRequest);
+                                    item.transaction = transaction;
+                                    return item;
+                                }).toList();
+                    }
+                    
                     return Panache.withTransaction(transaction::persist).onItem()
                             .transform(entityBase -> new TransactionResponse((TransactionDTO) entityBase))
-                            .map(persistedItem -> RestResponse.status(RestResponse.Status.CREATED, persistedItem));
+                            .map(response -> RestResponse.status(RestResponse.Status.CREATED, response));
                 })
                 .onItem().ifNull().continueWith(RestResponse.notFound());
     }

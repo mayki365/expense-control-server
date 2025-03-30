@@ -11,6 +11,7 @@ public class TransactionRequest {
     public String name;
     public String description;
     public List<String> tags;
+    public List<TransactionItemRequest> items;
     public BigDecimal amount;
     public LocalDateTime eventDate;
     public LocalDate bankStatementDate;

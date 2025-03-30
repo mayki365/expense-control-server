@@ -12,6 +12,7 @@ public class TransactionResponse {
     public String name;
     public String description;
     public List<String> tags;
+    public List<TransactionItemResponse> items;
     public BigDecimal amount;
     public LocalDateTime eventDate;
     public LocalDate bankStatementDate;
@@ -29,6 +30,12 @@ public class TransactionResponse {
             this.tags = invoice.tags.stream().map(tag -> tag.tag).toList();
         } else {
             this.tags = Collections.emptyList();
+        }
+
+        if (invoice.items != null && !invoice.items.isEmpty()) {
+            this.items = invoice.items.stream().map(TransactionItemResponse::new).toList();
+        } else {
+            this.items = Collections.emptyList();
         }
     }
 }

@@ -10,7 +10,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
-
+/**
+ * 
+ */
 @Entity
 @Table(name="account_transaction")
 @Cacheable
@@ -28,7 +30,7 @@ public class TransactionDTO extends PanacheEntity {
     @Column(length = 50)
     public String name;
 
-    @Column(length = 250)
+    @Column(length = 500)
     public String description;
 
     @OneToMany(mappedBy = "transaction", cascade = CascadeType.ALL, orphanRemoval = true)
@@ -38,6 +40,10 @@ public class TransactionDTO extends PanacheEntity {
     @ManyToOne
     @JoinColumn(name = "account_id")
     public AccountDTO account;
+
+    @OneToMany(mappedBy = "transaction", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Fetch(FetchMode.JOIN)
+    public List<TransactionItemDTO> items;
 
     @Column(precision = 10, scale = 2)
     public BigDecimal amount;
