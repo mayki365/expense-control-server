@@ -1,11 +1,11 @@
-CREATE DATABASE quarkus_test;
+CREATE DATABASE expense-control;
 
-\c quarkus_test
+\c expense-control
 
 -- Create a new application user
 CREATE USER app_user WITH PASSWORD 'app_password';
 
-GRANT CONNECT ON DATABASE quarkus_test TO app_user;
+GRANT CONNECT ON DATABASE expense-control TO app_user;
 
 GRANT USAGE ON SCHEMA public TO app_user;
 GRANT CREATE ON SCHEMA public TO app_user;

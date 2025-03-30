@@ -6,6 +6,8 @@ import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
+
+import org.hibernate.query.SortDirection;
 import org.jboss.logging.Logger;
 import org.jboss.resteasy.reactive.RestResponse;
 import se.zgodi.dto.invoice.*;
@@ -24,10 +26,12 @@ public class AccountResource {
         return AccountDTO
                 .listAll(Sort.by("id", Sort.Direction.Descending))
                 .map(items -> RestResponse.ok(
-                        items.stream().map(entity -> new AccountResponse((AccountDTO) entity)).toList())
-                );
+                        items.stream().map(entity -> new AccountResponse((AccountDTO) entity)).toList()));
     }
 
+    /**
+     * Return account data with list of transactions
+     */
     @GET
     @Path("/{id}")
     public Uni<RestResponse<AccountResponse>> getSingle(Long id) {
@@ -55,19 +59,75 @@ public class AccountResource {
                         : RestResponse.notFound());
     }
 
+    /*
+     * Function deletes transaction and updates account balance
+     */
+    @DELETE
+    @Path("/{accountId}/transaction/{transactionId}")
+    public Uni<RestResponse<Void>> deleteTransaction(
+            @PathParam("accountId") Long accountId,
+            @PathParam("transactionId") Long transactionId) {
+        return Panache.withTransaction(() -> TransactionDTO.findById(transactionId)
+                .onItem().ifNotNull().transformToUni(transaction -> {
+                    TransactionDTO txn = (TransactionDTO) transaction;
+                    if (!txn.account.id.equals(accountId)) {
+                        return Uni.createFrom().failure(new WebApplicationException("Account ID mismatch", 400));
+                    }
+                    AccountDTO account = txn.account;
+                    account.balance = account.balance.subtract(txn.amount);
+
+                    // Persist the updated account before deleting the transaction
+                    return account.persist()
+                            .onItem().transformToUni(ignored -> txn.delete())
+                            .onItem().ifNotNull().transform(
+                                    persistedItem -> RestResponse.status(RestResponse.Status.ACCEPTED, persistedItem));
+                })
+                .onItem().ifNull().failWith(new WebApplicationException("Transaction not found", 404)))
+                .onFailure().recoverWithItem(throwable -> {
+                    // Handling internal server error
+                    throwable.printStackTrace();
+                    return RestResponse.status(RestResponse.Status.BAD_REQUEST);
+                });
+    }
+
     @POST
     @Path("/{id}/transaction")
     @Consumes(MediaType.APPLICATION_JSON)
-    public Uni<RestResponse<TransactionResponse>> addTransaction(@PathParam("id") Long id, TransactionRequest transactionRequest) {
+    public Uni<RestResponse<TransactionResponse>> addTransaction(@PathParam("id") Long id,
+            TransactionRequest transactionRequest) {
 
         return AccountDTO.findById(id)
                 .onItem().ifNotNull().transformToUni(account -> {
                     TransactionDTO transaction = new TransactionDTO(transactionRequest);
-                    transaction.tags = transactionRequest.tags.stream().map(tagName -> new TransactionTagDTO(transaction, tagName)).toList();
+                    transaction.tags = transactionRequest.tags.stream()
+                            .map(tagName -> new TransactionTagDTO(transaction, tagName)).toList();
                     transaction.account = (AccountDTO) account;
+                    ((AccountDTO) account).balance = ((AccountDTO) account).balance.add(transaction.amount);
                     return Panache.withTransaction(transaction::persist).onItem()
                             .transform(entityBase -> new TransactionResponse((TransactionDTO) entityBase))
                             .map(persistedItem -> RestResponse.status(RestResponse.Status.CREATED, persistedItem));
+                })
+                .onItem().ifNull().continueWith(RestResponse.notFound());
+    }
+
+    /**
+     * Return account data with list of transactions
+     */
+    @GET
+    @Path("/{id}/transaction")
+    public Uni<RestResponse<List<TransactionResponse>>> getTransactionsForAccount(@PathParam("id") Long id) {
+        LOG.debug(id);
+        return AccountDTO.findById(id)
+                .onItem().ifNotNull().transformToUni(account -> {
+                    return TransactionDTO.find(
+                            "account.id = ?1",
+                            Sort.by("id", Sort.Direction.Descending),
+                            id)
+                            .list()
+                            .map(transactions -> RestResponse.ok(
+                                    transactions.stream()
+                                            .map(transaction -> new TransactionResponse((TransactionDTO) transaction))
+                                            .toList()));
                 })
                 .onItem().ifNull().continueWith(RestResponse.notFound());
     }

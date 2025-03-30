@@ -2,10 +2,13 @@ package se.zgodi.dto.invoice;
 
 import io.quarkus.hibernate.reactive.panache.PanacheEntity;
 import jakarta.persistence.*;
+import org.hibernate.annotations.Fetch;
+import org.hibernate.annotations.FetchMode;
 import se.zgodi.enums.AccountStatus;
 import se.zgodi.enums.AccountType;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Entity
 @Table(name="account")
@@ -26,6 +29,10 @@ public class AccountDTO extends PanacheEntity {
     @Column(precision = 10, scale = 2)
     public BigDecimal balance;
 
+    @OneToMany(mappedBy = "account", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Fetch(FetchMode.JOIN)
+    public List<TransactionDTO> tranactions;
+
     public AccountDTO() { }
     public AccountDTO(AccountRequest accountRequest) {
         this.name = accountRequest.name;
@@ -34,4 +41,5 @@ public class AccountDTO extends PanacheEntity {
         this.status = accountRequest.status;
         this.balance = accountRequest.balance;
     }
+
 }

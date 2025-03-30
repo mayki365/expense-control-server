@@ -6,6 +6,8 @@ import org.hibernate.annotations.Fetch;
 import org.hibernate.annotations.FetchMode;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 
@@ -19,6 +21,8 @@ public class TransactionDTO extends PanacheEntity {
         this.name = transactionRequest.name;
         this.description = transactionRequest.description;
         this.amount = transactionRequest.amount;
+        this.eventDate = transactionRequest.eventDate;
+        this.bankStatementDate = transactionRequest.bankStatementDate;
     }
 
     @Column(length = 50)
@@ -37,5 +41,11 @@ public class TransactionDTO extends PanacheEntity {
 
     @Column(precision = 10, scale = 2)
     public BigDecimal amount;
+
+    @Column(name = "event_date", nullable = true)
+    public LocalDateTime eventDate;  // Date when the transaction actually happened
+
+    @Column(name = "bank_statement_date", nullable = true)
+    public LocalDate bankStatementDate;  // Date when the bank processed the transaction
 
 }

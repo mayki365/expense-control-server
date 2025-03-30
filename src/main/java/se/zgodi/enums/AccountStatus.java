@@ -1,5 +1,5 @@
 package se.zgodi.enums;
 
 public enum AccountStatus {
-    OPENED, CLOSED, DELETED
+    ACTIVE, CLOSED, DELETED
 }
