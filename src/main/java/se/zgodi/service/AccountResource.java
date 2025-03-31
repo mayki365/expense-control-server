@@ -12,7 +12,9 @@ import org.jboss.resteasy.reactive.RestResponse;
 import se.zgodi.dto.invoice.*;
 
 import java.math.BigDecimal;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Path("/account")
@@ -217,12 +219,19 @@ public class AccountResource {
                     txn.eventDate = transactionRequest.eventDate;
                     txn.bankStatementDate = transactionRequest.bankStatementDate;
 
-                    // Clear and update tags
-                    txn.tags.clear();
+                    // Check if there are new tags and remove tags that are not in the request
+                    Set<String> tagNames = new HashSet<>();
                     if (transactionRequest.tags != null) {
-                        transactionRequest.tags.forEach(tag -> 
-                            txn.tags.add(new TransactionTagDTO(txn, tag)));
+                        tagNames.addAll(transactionRequest.tags);
                     }
+
+                    // Remove tags that are not in the request
+                    txn.tags.removeIf(tag -> !tagNames.contains(tag.tag));
+
+                    // Add new tags
+                    tagNames.stream()
+                        .filter(tagName -> !txn.tags.stream().anyMatch(tag -> tag.tag.equals(tagName)))
+                        .forEach(tagName -> txn.tags.add(new TransactionTagDTO(txn, tagName)));
 
                     // Clear and update items
                     txn.items.clear();
@@ -239,7 +248,7 @@ public class AccountResource {
                     account.balance = account.balance.add(amountDifference);
 
                     // First persist items to get their IDs
-                    Uni<Void> persistItems = Uni.createFrom().voidItem();
+                    final Uni<Void> persistItems;
                     if (txn.items != null && !txn.items.isEmpty()) {
                         persistItems = Panache.withTransaction(() -> 
                             Uni.join().all(txn.items.stream()
@@ -247,6 +256,8 @@ public class AccountResource {
                                 .collect(Collectors.toList()))
                                 .andFailFast()
                                 .replaceWith(() -> null));
+                    } else {
+                        persistItems = Uni.createFrom().voidItem();
                     }
 
                     // Then persist account and transaction
