@@ -124,21 +124,37 @@ public class AccountResource {
         return AccountDTO.<AccountDTO>findById(accountId)
                 .onItem().ifNull()
                 .failWith(() -> new WebApplicationException("Account not found", Response.Status.NOT_FOUND))
-                .<RestResponse<TransactionResponse>>flatMap(account -> TransactionDTO
-                        .<TransactionDTO>findById(transactionId)
-                        .onItem().ifNull()
-                        .failWith(() -> new WebApplicationException("Transaction not found", Response.Status.NOT_FOUND))
-                        .map(transaction -> {
-                            TransactionDTO txn = (TransactionDTO) transaction;
-                            // Verify the transaction belongs to the specified account
-                            if (txn.account == null || !txn.account.id.equals(accountId)) {
-                                throw new WebApplicationException(
-                                        String.format("Transaction %d does not belong to account %d",
-                                                transactionId, accountId),
-                                        Response.Status.BAD_REQUEST);
-                            }
-                            return RestResponse.ok(new TransactionResponse(txn));
-                        }))
+                .<RestResponse<TransactionResponse>>flatMap(account -> {
+                    // First get transaction with tags
+                    return TransactionDTO
+                            .<TransactionDTO>find("FROM TransactionDTO t LEFT JOIN FETCH t.tags WHERE t.id = ?1", transactionId)
+                            .firstResult()
+                            .onItem().ifNull()
+                            .failWith(() -> new WebApplicationException("Transaction not found", Response.Status.NOT_FOUND))
+                            // Then fetch items
+                            .chain(transaction -> {
+                                TransactionDTO txn = (TransactionDTO) transaction;
+                                return TransactionDTO
+                                        .<TransactionDTO>find("FROM TransactionDTO t LEFT JOIN FETCH t.items WHERE t.id = ?1",
+                                                transactionId)
+                                        .firstResult()
+                                        .map(transactionWithItems -> {
+                                            // Merge items into our transaction
+                                            txn.items = ((TransactionDTO) transactionWithItems).items;
+                                            return txn;
+                                        });
+                            })
+                            .map(txn -> {
+                                // Verify the transaction belongs to the specified account
+                                if (txn.account == null || !txn.account.id.equals(accountId)) {
+                                    throw new WebApplicationException(
+                                            String.format("Transaction %d does not belong to account %d",
+                                                    transactionId, accountId),
+                                            Response.Status.BAD_REQUEST);
+                                }
+                                return RestResponse.ok(new TransactionResponse(txn));
+                            });
+                })
                 .onFailure().recoverWithItem(failure -> {
                     LOG.error("Error getting transaction", failure);
                     if (failure instanceof WebApplicationException) {
@@ -163,24 +179,23 @@ public class AccountResource {
         updateTransactionSum(transactionRequest);
 
         return Panache.withTransaction(() ->
-        // First get the transaction with tags
-        TransactionDTO
+            // First get the transaction with tags
+            TransactionDTO
                 .<TransactionDTO>find("FROM TransactionDTO t LEFT JOIN FETCH t.tags WHERE t.id = ?1", transactionId)
                 .firstResult()
                 .onItem().ifNull()
                 .failWith(() -> new WebApplicationException("Transaction not found", Response.Status.NOT_FOUND))
-                // Then fetch items in a separate query
+                // Then fetch items
                 .chain(transaction -> {
                     TransactionDTO txn = (TransactionDTO) transaction;
                     return TransactionDTO
-                            .<TransactionDTO>find("FROM TransactionDTO t LEFT JOIN FETCH t.items WHERE t.id = ?1",
-                                    transactionId)
-                            .firstResult()
-                            .map(transactionWithItems -> {
-                                // Merge items into our transaction
-                                txn.items = ((TransactionDTO) transactionWithItems).items;
-                                return txn;
-                            });
+                        .<TransactionDTO>find("FROM TransactionDTO t LEFT JOIN FETCH t.items WHERE t.id = ?1", transactionId)
+                        .firstResult()
+                        .map(transactionWithItems -> {
+                            // Merge items into our transaction
+                            txn.items = ((TransactionDTO) transactionWithItems).items;
+                            return txn;
+                        });
                 })
                 .<RestResponse<TransactionResponse>>flatMap(transaction -> {
                     TransactionDTO txn = (TransactionDTO) transaction;
@@ -202,34 +217,45 @@ public class AccountResource {
                     txn.eventDate = transactionRequest.eventDate;
                     txn.bankStatementDate = transactionRequest.bankStatementDate;
 
-                    // Update tags
+                    // Clear and update tags
                     txn.tags.clear();
                     if (transactionRequest.tags != null) {
-                        txn.tags.addAll(transactionRequest.tags.stream()
-                                .map(tag -> new TransactionTagDTO(txn, tag))
-                                .collect(Collectors.toList()));
+                        transactionRequest.tags.forEach(tag -> 
+                            txn.tags.add(new TransactionTagDTO(txn, tag)));
                     }
 
-                    // Update items
+                    // Clear and update items
                     txn.items.clear();
                     if (transactionRequest.items != null) {
-                        txn.items.addAll(transactionRequest.items.stream()
-                                .map(item -> {
-                                    TransactionItemDTO itemDTO = new TransactionItemDTO(item);
-                                    return itemDTO;
-                                })
-                                .collect(Collectors.toList()));
+                        transactionRequest.items.forEach(item -> {
+                            TransactionItemDTO itemDTO = new TransactionItemDTO(item);
+                            itemDTO.transaction = txn; // Set the transaction reference
+                            txn.items.add(itemDTO);
+                        });
                     }
 
                     // Update account balance with the difference
                     AccountDTO account = txn.account;
                     account.balance = account.balance.add(amountDifference);
 
-                    // Persist changes
-                    return account.persist()
-                            .chain(() -> txn.persist())
-                            .map(updated -> RestResponse.ok(new TransactionResponse(txn)));
-                })).onFailure().recoverWithItem(failure -> {
+                    // First persist items to get their IDs
+                    Uni<Void> persistItems = Uni.createFrom().voidItem();
+                    if (txn.items != null && !txn.items.isEmpty()) {
+                        persistItems = Panache.withTransaction(() -> 
+                            Uni.join().all(txn.items.stream()
+                                .map(item -> item.persist())
+                                .collect(Collectors.toList()))
+                                .andFailFast()
+                                .replaceWith(() -> null));
+                    }
+
+                    // Then persist account and transaction
+                    return persistItems
+                        .chain(() -> account.persist())
+                        .chain(() -> txn.persist())
+                        .map(updated -> RestResponse.ok(new TransactionResponse(txn)));
+                }))
+                .onFailure().recoverWithItem(failure -> {
                     LOG.error("Error updating transaction", failure);
                     if (failure instanceof WebApplicationException) {
                         WebApplicationException wae = (WebApplicationException) failure;

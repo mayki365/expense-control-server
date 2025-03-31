@@ -37,5 +37,6 @@ public class TransactionResponse {
         } else {
             this.items = Collections.emptyList();
         }
+
     }
 }
